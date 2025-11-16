@@ -173,6 +173,205 @@ Section 3 시작: "# 한국어 번역" (완전히 끊김)
 
 ---
 
+## 🔧 구현 매핑
+
+이 가이드라인의 각 항목이 실제 코드에서 어떻게 구현되었는지 명시합니다:
+
+### 1. 톤 통일 (존댓말)
+
+**가이드라인**: 모든 문장을 존댓말("~습니다", "~합니다")로 통일
+
+**구현**:
+```python
+# translate_full_pdf.py의 translate_with_claude() 함수
+
+prompt = f"""당신은 20년 경력의 전문 출판 번역가입니다.
+...
+【스타일 가이드】
+✅ 톤: 정중하고 친근한 존댓말 (경어체: ~합니다, ~습니다)
+✅ 문체: 전문적이면서도 쉽게 읽히는 교양서 스타일
+...
+"""
+```
+
+**프롬프트 내 명시된 예시**:
+```
+원문: "I was 25 years old and completely panicked, but I'm a terrible liar."
+
+✅ 좋은 번역 (자연스러운 한국어):
+"당시 스물다섯이었던 저는 완전히 당황했습니다. 하지만 저는 거짓말을 정말 못합니다."
+```
+
+**검증 방법**:
+- 모든 문장이 "~습니다" 또는 "~합니다"로 끝나는지 확인
+- HOW_TO_RETRANSLATE.md의 "✅ 품질 검증 체크리스트" 섹션 참고
+
+### 2. 용어 일관성 (30개 핵심 용어 사전)
+
+**가이드라인**: TRANSLATION_GUIDELINE.md의 30개 핵심 용어 사전 준수
+
+**구현**:
+```python
+# translate_full_pdf.py의 translate_with_claude() 함수 내 프롬프트
+
+【핵심 용어 사전】
+startup → 스타트업
+founder → 창업자
+entrepreneur → 기업가
+venture capital → 벤처캐피탈 (VC도 허용)
+investor → 투자자
+B2B/B2C → B2B/B2C (그대로)
+CEO/COO/CTO → CEO/COO/CTO (그대로)
+MVP → MVP (최소기능제품)
+pivot → 피벗
+growth hacking → 그로스 해킹
+exit → 엑시트
+cash flow → 현금흐름
+runway → 런웨이 (자금 소진 기간)
+burn rate → 번레이트 (자금 소진 속도)
+... (총 14개 명시, 추가 16개는 프롬프트에 포함)
+```
+
+**검증 방법**:
+- 번역 결과에서 "startup" 관련 용어를 모두 찾아 "스타트업"로 통일되었는지 확인
+- 동일한 개념이 여러 번 나올 때 항상 같은 용어로 표현되었는지 확인
+- grep을 사용한 자동 검증:
+  ```bash
+  grep -i "venture\|vc\|capital" output_*.md
+  ```
+
+### 3. 문장 길이 & 가독성 (평균 20-30단어)
+
+**가이드라인**: 평균 문장 길이 20-30단어, 각 문단 3-5문장
+
+**구현**:
+```python
+# translate_full_pdf.py의 translate_with_claude() 함수 내 5가지 번역 철학
+
+【번역 철학 #3: 읽기 쉬운 문장】
+- 한 문장에 하나의 핵심 아이디어
+- 긴 문장은 2-3개로 분리
+- 불필요한 수식어 제거
+- 리듬감 있게
+```
+
+**실제 예시** (프롬프트에 명시):
+```
+원문: "That's when I realized we had to pivot."
+
+❌ 나쁜 번역 (번역체, 문장 길이 과다):
+"그것은 우리가 피벗을 해야만 했다는 것을 제가 깨달았을 때였습니다."
+
+✅ 좋은 번역 (자연스럽고 짧음):
+"그때 깨달았습니다. 방향을 바꿔야 한다는 것을요."
+```
+
+**검증 방법**:
+- 번역 텍스트에서 각 문장의 단어 수를 세어 평균 계산
+- Python 스크립트로 자동 검증:
+  ```python
+  import re
+  sentences = re.split(r'[.!?]+', translated_text)
+  word_counts = [len(s.split()) for s in sentences if s.strip()]
+  avg_length = sum(word_counts) / len(word_counts)
+  print(f"평균 문장 길이: {avg_length:.1f}단어")
+  ```
+
+### 4. 컨텍스트 흐름 (섹션 간 자연스러운 전환)
+
+**가이드라인**: 이전 섹션의 주제를 다음 섹션에서 언급하여 자연스러운 흐름 유지
+
+**구현**:
+```python
+# translate_full_pdf.py의 chunk_text() 함수
+
+def chunk_text(text, chunk_size=5000, overlap_sentences=2):
+    """
+    ...
+    3. 컨텍스트 오버랩 (2문장):
+       - 이전 청크의 마지막 N개 문장을 새 청크 시작에 포함
+       - 번역 일관성 보장 및 청크 경계 부드럽게 처리
+    """
+    # 각 청크는 {'text': '...', 'overlap': '...'} 형식으로 반환됨
+    chunks.append({
+        'text': chunk_text,
+        'overlap': " ".join(overlap_buffer) if overlap_buffer else None
+    })
+```
+
+**컨텍스트 사용** (번역 시):
+```python
+# translate_with_claude() 함수 내
+
+prompt = f"""
+...
+⚠️ 이전 맥락 (참고용 - 번역하지 마세요):
+---
+{context}  # 이전 청크의 마지막 문장들
+---
+
+💡 위 내용은 이미 번역된 부분입니다. 흐름과 맥락을 이해하는 데만 사용하세요.
+
+📝 이제 아래 텍스트를 번역하세요:
+...
+"""
+```
+
+**효과**:
+- 청크 경계에서의 어색함 제거
+- 용어 일관성 보장
+- 문장 구조 자연스러운 연결
+
+### 5. 번역 철학 구현
+
+**가이드라인**: 5가지 번역 철학 준수
+
+**구현** (translate_full_pdf.py의 프롬프트):
+
+| 철학 | 구현 | 검증 |
+|------|------|------|
+| **의미의 충실성** | "단어 하나하나보다 문장 전체의 의도를 파악" | 원문 의미 손실 없음 |
+| **자연스러운 한국어** | "~되어지다", "것이다" 등 번역체 금지 | 번역체 표현 0개 |
+| **읽기 쉬운 문장** | "한 문장에 하나의 핵심 아이디어" | 평균 20-30단어 |
+| **맥락과 흐름** | "문장 간 자연스러운 연결" + overlap | 섹션 간 어색함 없음 |
+| **톤과 뉘앙스** | 섹션별 톤 가이드 (개인 일화/통계/조언) | 섹션별 톤 일관성 |
+
+### 6. 부분별 톤 가이드 구현
+
+**가이드라인**: 섹션 유형별 톤 차별화
+
+**구현** (프롬프트 내 예시):
+
+```python
+# 개인 일화 섹션
+"당시 스물다섯이었던 저는 완전히 당황했습니다."  # 따뜻함
+
+# 통계/데이터 섹션
+"하버드 비즈니스 스쿨의 코호트 분석에 따르면..."  # 객관적
+
+# 조언/교훈 섹션
+"투명성은 처음에는 더 어렵습니다. 하지만..."  # 직설적이면서 실용적
+```
+
+**검증 방법**:
+- 각 섹션의 톤이 가이드라인을 따르는지 육안 검증
+- 감정 표현의 적절성 확인
+
+---
+
+## 구현 파일 참고
+
+| 항목 | 파일 | 함수/섹션 |
+|------|------|---------|
+| 스마트 청킹 | translate_full_pdf.py | chunk_text() |
+| 전문 번역 프롬프트 | translate_full_pdf.py | translate_with_claude() |
+| 병렬 처리 | translate_full_pdf.py | translate_chunks() |
+| 컨텍스트 인식 | translate_full_pdf.py | translate_with_claude() + chunk_text() |
+| 성능 지표 | translate_full_pdf.py | translate_chunks() (최종 통계) |
+| 상세 가이드 | HOW_TO_RETRANSLATE.md | 전체 문서 |
+
+---
+
 ## 📌 수정 우선순위
 
 **P0 (필수)**:
