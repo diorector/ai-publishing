@@ -258,14 +258,30 @@ def main():
     print("[OK] API key configured")
     print()
 
-    # Check PDF
-    pdf_path = Path('src/translation/laf.pdf')
+    # Get PDF path from CLI argument or use default
+    if len(sys.argv) > 1:
+        pdf_path = Path(sys.argv[1])
+        if not pdf_path.is_absolute():
+            # 상대 경로면 input/ 폴더 기준으로
+            pdf_path = Path("input") / pdf_path
+    else:
+        # 기본값: input/laf.pdf
+        pdf_path = Path('input/laf.pdf')
+
     if not pdf_path.exists():
         print(f"[ERROR] PDF not found: {pdf_path}")
+        print()
+        print("사용법:")
+        print("  python translate_full_pdf.py laf.pdf")
+        print("  python translate_full_pdf.py input/my_book.pdf")
+        print("  python translate_full_pdf.py /absolute/path/to/book.pdf")
         return
 
-    print(f"[PDF] {pdf_path.name}")
+    print(f"[PDF] {pdf_path.name} ({pdf_path.absolute()})")
     print()
+
+    # output 폴더 생성
+    Path("output").mkdir(exist_ok=True)
 
     # Extract
     print("[STEP 1] Extract PDF")
@@ -298,7 +314,8 @@ def main():
     print("-" * 70)
     markdown = generate_markdown(pdf_path.stem, translated_chunks, text, len(pages))
 
-    output_path = Path('output_laf_full_translated.md')
+    # output/ 폴더에 저장
+    output_path = Path('output') / f'output_{pdf_path.stem}_translated.md'
     output_path.write_text(markdown, encoding='utf-8')
 
     print(f"[OK] Markdown saved: {output_path}")

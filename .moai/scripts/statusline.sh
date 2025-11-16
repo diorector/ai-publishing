@@ -1,4 +1,4 @@
- #!/usr/bin/env bash
+     #!/usr/bin/env bash
 # MoAI-ADK Statusline for Claude Code
 #
 # This shell wrapper is CRITICAL for proper Claude Code statusline integration.

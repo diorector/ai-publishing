@@ -35,14 +35,35 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+### 📂 파일 구조
+
+```
+ai-publishing/
+├── translate_full_pdf.py              (메인 스크립트)
+├── input/                             (번역할 PDF 폴더)
+│   ├── laf.pdf                       (기본 파일)
+│   ├── book1.pdf
+│   └── book2.pdf
+└── output/                            (번역 결과 폴더)
+    ├── output_laf_translated.md
+    ├── output_book1_translated.md
+    └── output_book2_translated.md
+```
+
 ### 번역 실행
 
 ```bash
-# 가장 간단한 방법
+# 방법 1: 기본 파일 (input/laf.pdf) 번역
 python translate_full_pdf.py
 
+# 방법 2: input 폴더의 다른 파일 번역
+python translate_full_pdf.py book1.pdf
+
+# 방법 3: 절대 경로 지정
+python translate_full_pdf.py /path/to/my_book.pdf
+
 # 출력
-# - output_laf_full_translated.md (한국어 번역본)
+# → output/output_{파일명}_translated.md
 ```
 
 ---
