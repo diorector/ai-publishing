@@ -1,0 +1,45 @@
+{
+  "project": {
+    "name": "ai-publishing",
+    "mode": "personal",
+    "locale": "ko",
+    "language": "typescript",
+    "language_detection": {
+      "detected_language": "typescript",
+      "detection_method": "user_specified_with_python_backend",
+      "confidence": "high",
+      "markers": ["ai_ml_publishing_platform"],
+      "confirmed_by": "user"
+    },
+    "description": "AI-powered publishing platform with ML-driven content generation and distribution",
+    "owner": "@user",
+    "created_at": "2025-11-16 00:21:02",
+    "initialized": true,
+    "optimized": true
+  },
+  "language": {
+    "conversation_language": "ko",
+    "conversation_language_name": "한국어",
+    "agent_prompt_language": "en",
+    "notes": "Language for sub-agent internal prompts (english=global standard, localized=user's conversation language)"
+  },
+  "moai": {
+    "version": "0.25.7",
+    "update_check_frequency": "daily",
+    "version_check": {
+      "enabled": true,
+      "cache_ttl_hours": 24
+    },
+    "framework": {
+      "frontend": "next.js",
+      "backend": "fastapi",
+      "ml_framework": "pytorch",
+      "deployment": "railway_vercel"
+    }
+  },
+  "user": {
+    "expertise_level": "intermediate",
+    "preferred_persona": "alfred",
+    "ai_focus": "ml_publishing"
+  }
+}
