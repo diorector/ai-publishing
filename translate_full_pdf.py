@@ -86,9 +86,11 @@ def translate_with_claude(
     text: str,
     source_lang: str = "English",
     target_lang: str = "Korean",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    chunk_num: int = 0,
+    total_chunks: int = 0
 ) -> Optional[str]:
-    """Translate text using Claude API"""
+    """Translate text using Claude API with enhanced quality guidelines"""
     if not api_key:
         return None
 
@@ -97,18 +99,50 @@ def translate_with_claude(
 
         client = Anthropic(api_key=api_key)
 
-        prompt = f"""Translate the following {source_lang} text to {target_lang}.
+        # 향상된 번역 프롬프트 (출판 품질)
+        prompt = f"""당신은 출판용 한국어 번역 전문가입니다. 다음 텍스트를 번역하세요.
 
-Requirements:
-1. Preserve original formatting and structure
-2. Keep technical terms and proper nouns
-3. Make the translation natural and readable in {target_lang}
-4. Return ONLY the translated text
+【필수 번역 기준】
+1. 톤: 모든 문장을 존댓말("~습니다", "~합니다")로 통일
+2. 스타일: 비즈니스 교양서 - 전문적이면서 접근 가능함
+3. 문장: 명확하고 20-30단어 길이로
+4. 용어 사전을 정확히 따를 것
+5. 원본 포맷 유지
+6. 기술 용어 정확성
 
-Text:
+【핵심 용어 사전】
+- startup → 스타트업
+- founder → 창업자
+- entrepreneur → 기업가
+- venture capital → 벤처캐피탈
+- investor → 투자자
+- B2B → B2B
+- CEO → CEO
+- COO → COO
+- MVP → MVP
+- pivot → 피벗
+- growth hacking → 성장 해킹
+- exit strategy → 출구 전략
+- cash flow → 현금흐름
+- gross margin → 총 이익률
+- self-service → 셀프 서비스
+
+【톤 예시】
+✅ "나는 25세였고, 완전히 당황했습니다. 하지만 저는 형편없는 거짓말쟁이라서..."
+❌ "나 25살이었고, 진짜 깜짝 놀랐다."
+
+【번역 텍스트 (Chunk {chunk_num}/{total_chunks})】
 ---
 {text}
----"""
+---
+
+【최종 확인】
+□ 모든 문장이 존댓말인가?
+□ 용어 사전을 따랐는가?
+□ 명확하고 읽기 쉬운가?
+□ 기술 용어가 정확한가?
+
+번역 결과만 반환하세요."""
 
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -132,18 +166,26 @@ def translate_chunks(
     target_lang: str = "Korean",
     api_key: Optional[str] = None
 ) -> List[str]:
-    """Translate all chunks"""
+    """Translate all chunks with enhanced quality guidelines"""
     translated_chunks = []
     start_time = time.time()
 
-    print(f"[TRANSLATING] {len(chunks)} chunks...")
+    print(f"[TRANSLATING] {len(chunks)} chunks (with quality guidelines)...")
     print()
 
     for i, chunk in enumerate(chunks, 1):
         chunk_start = time.time()
         print(f"[{i:2d}/{len(chunks)}] Chunk {i}...", end=" ")
 
-        translated = translate_with_claude(chunk, source_lang, target_lang, api_key)
+        # chunk_num과 total_chunks 정보 전달
+        translated = translate_with_claude(
+            chunk,
+            source_lang,
+            target_lang,
+            api_key,
+            chunk_num=i,
+            total_chunks=len(chunks)
+        )
 
         if translated:
             translated_chunks.append(translated)
@@ -156,6 +198,7 @@ def translate_chunks(
     elapsed = time.time() - start_time
     print()
     print(f"[OK] All chunks translated in {elapsed:.1f}s")
+    print(f"[OK] Quality guidelines applied: TRANSLATION_GUIDELINE.md")
     print()
 
     return translated_chunks
