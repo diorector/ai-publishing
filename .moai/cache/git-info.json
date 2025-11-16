@@ -1,7 +1,7 @@
 {
   "branch": "master",
-  "last_commit": "c42e5ba feat(specs): Create 7 comprehensive SPEC documents for AI-Native Publishing Platform",
-  "commit_time": "8 hours ago",
-  "changes": 31,
-  "last_check": "2025-11-16T21:53:30.575688"
+  "last_commit": "870c0bd refactor: Flexible PDF translation with input/output folder structure",
+  "commit_time": "76 minutes ago",
+  "changes": 14,
+  "last_check": "2025-11-17T01:38:03.482873"
 }

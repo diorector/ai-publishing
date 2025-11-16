@@ -31,6 +31,100 @@ def get_api_key() -> Optional[str]:
     return os.getenv('ANTHROPIC_API_KEY')
 
 
+def extract_glossary(text: str, api_key: str, sample_size: int = 30000) -> dict:
+    """
+    전체 텍스트에서 핵심 용어 추출 및 번역
+    
+    문서를 샘플링하여 분야를 파악하고 핵심 전문 용어를 자동으로 추출합니다.
+    이를 통해 어떤 분야의 문서가 와도 일관된 용어 번역을 보장합니다.
+    
+    전략:
+    - 텍스트 샘플링: 처음 15k + 중간 10k + 끝 5k chars
+    - Haiku 모델 사용으로 비용 최소화 (~$0.01)
+    - JSON 응답으로 파싱 간편화
+    
+    Args:
+        text: 전체 텍스트
+        api_key: Anthropic API 키
+        sample_size: 샘플링할 총 크기 (기본 30000)
+    
+    Returns:
+        {
+            "domain": "문서 분야",
+            "key_terms": {"영문": "한글", ...}
+        }
+    """
+    print(f"[ANALYZING] Extracting key terms from document...", flush=True)
+    
+    # 샘플링 전략: 처음, 중간, 끝에서 고르게
+    total_len = len(text)
+    sample = (
+        text[:15000] +  # 처음 (도입부, 주요 개념)
+        text[total_len//2:total_len//2+10000] +  # 중간 (핵심 내용)
+        text[-5000:]  # 끝 (결론, 요약)
+    )
+    
+    prompt = f"""이 문서를 분석하여 핵심 전문 용어를 추출하세요.
+
+【분석 대상 텍스트 샘플】
+{sample}
+
+【작업】
+1. 문서의 분야/주제를 파악하세요 (예: startup, medicine, law, technology, finance 등)
+2. 자주 등장하거나 중요한 전문 용어 20-30개를 추출하세요
+3. 각 용어의 적절한 한국어 번역을 제시하세요
+
+【번역 원칙】
+- 해당 분야에서 통용되는 번역이 있으면 그대로 사용
+- 없으면 음차 또는 의역
+- 약어는 가능하면 그대로 유지 (예: CEO, MVP, API)
+- 일관성이 가장 중요합니다
+
+【중요 예시】
+- startup 분야: "term sheet" → "텀시트" (⚠️ "이용약관" 아님!)
+- medicine: "hypertension" → "고혈압"
+- law: "plaintiff" → "원고"
+
+【출력 형식】
+JSON만 출력하세요 (설명 없이):
+{{
+  "domain": "분야명",
+  "key_terms": {{
+    "영문용어1": "한글번역1",
+    "영문용어2": "한글번역2"
+  }}
+}}"""
+
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=api_key)
+        
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",  # 저렴한 모델
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # JSON 파싱
+        result_text = response.content[0].text
+        
+        # 마크다운 코드 블록 제거
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+        
+        glossary = json.loads(result_text.strip())
+        
+        print(f"[OK] Glossary extracted successfully", flush=True)
+        return glossary
+        
+    except Exception as e:
+        print(f"[WARNING] Glossary extraction failed: {e}", flush=True)
+        print(f"[INFO] Proceeding without custom glossary", flush=True)
+        return {"domain": "unknown", "key_terms": {}}
+
+
 def extract_pdf(pdf_path):
     """
     Extract text from PDF with progress tracking
@@ -172,7 +266,8 @@ def translate_with_claude(
     api_key: Optional[str] = None,
     chunk_num: int = 0,
     total_chunks: int = 0,
-    context: Optional[str] = None
+    context: Optional[str] = None,
+    glossary: Optional[dict] = None
 ) -> Optional[str]:
     """
     전문 번역가 수준의 프롬프트를 사용한 Claude API 기반 번역
@@ -252,8 +347,31 @@ def translate_with_claude(
 
         client = Anthropic(api_key=api_key)
 
+        # 용어집 섹션 생성
+        glossary_section = ""
+        if glossary and glossary.get("key_terms"):
+            terms = glossary["key_terms"]
+            domain = glossary.get("domain", "unknown")
+            glossary_section = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【이 문서의 핵심 용어집 - 반드시 준수!】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+문서 분야: {domain}
+
+필수 용어 번역 (절대 변경하지 마세요):
+"""
+            for eng, kor in list(terms.items())[:30]:  # 최대 30개
+                glossary_section += f"{eng} → {kor}\n"
+            
+            glossary_section += """
+⚠️ 위 용어들은 이 문서 전체에서 일관되게 사용해야 합니다!
+⚠️ 같은 용어를 다르게 번역하지 마세요!
+
+"""
+        
         # 프로 번역가 수준의 프롬프트
-        prompt = f"""당신은 20년 경력의 전문 출판 번역가입니다. 비즈니스/스타트업 분야의 베스트셀러를 다수 번역했으며, 독자들로부터 "원문보다 더 잘 읽힌다"는 평가를 받습니다.
+        prompt = f"""당신은 20년 경력의 전문 출판 번역가입니다. 다양한 분야의 베스트셀러를 다수 번역했으며, 독자들로부터 "원문보다 더 잘 읽힌다"는 평가를 받습니다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【번역 철학】
@@ -285,29 +403,10 @@ def translate_with_claude(
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ 톤: 정중하고 친근한 존댓말 (경어체: ~합니다, ~습니다)
-✅ 대상: 스타트업/비즈니스에 관심 있는 지적 독자
+✅ 대상: 해당 분야에 관심 있는 지적 독자
 ✅ 문체: 전문적이면서도 쉽게 읽히는 교양서 스타일
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【핵심 용어 사전】
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-startup → 스타트업
-founder → 창업자  
-entrepreneur → 기업가
-venture capital → 벤처캐피탈 (VC도 허용)
-investor → 투자자
-B2B/B2C → B2B/B2C (그대로)
-CEO/COO/CTO → CEO/COO/CTO (그대로)
-MVP → MVP (최소기능제품)
-pivot → 피벗
-growth hacking → 그로스 해킹
-exit → 엑시트
-cash flow → 현금흐름
-runway → 런웨이 (자금 소진 기간)
-burn rate → 번레이트 (자금 소진 속도)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{glossary_section}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【번역 예시 - 나쁜 vs 좋은】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -396,7 +495,8 @@ def translate_chunks(
     source_lang: str = "English",
     target_lang: str = "Korean",
     api_key: Optional[str] = None,
-    max_workers: int = 5
+    max_workers: int = 5,
+    glossary: Optional[dict] = None
 ) -> List[str]:
     """
     병렬 처리를 사용한 모든 청크의 효율적 번역
@@ -482,7 +582,8 @@ def translate_chunks(
             api_key,
             chunk_num=i,
             total_chunks=len(chunks),
-            context=context
+            context=context,
+            glossary=glossary
         )
         
         elapsed = time.time() - chunk_start
@@ -616,7 +717,7 @@ def main():
 
     # Extract
     print()
-    print("[STEP 1/4] Extract PDF")
+    print("[STEP 1/5] Extract PDF")
     print("-" * 70)
     text, metadata, pages = extract_pdf(pdf_path)
     if not text:
@@ -626,17 +727,38 @@ def main():
     print(f"[OK] ✓ Extracted {len(text):,} characters from {len(pages)} pages")
     print()
 
+    # Glossary extraction
+    print("[STEP 2/5] Analyze document & extract glossary")
+    print("-" * 70)
+    glossary = extract_glossary(text, api_key)
+    
+    if glossary and glossary.get("key_terms"):
+        print(f"[OK] ✓ Document domain: {glossary.get('domain', 'unknown')}")
+        print(f"[OK] ✓ Extracted {len(glossary['key_terms'])} key terms")
+        # 샘플 표시
+        sample_terms = list(glossary['key_terms'].items())[:5]
+        for eng, kor in sample_terms:
+            print(f"      • {eng} → {kor}")
+        if len(glossary['key_terms']) > 5:
+            print(f"      ... and {len(glossary['key_terms']) - 5} more")
+    else:
+        print(f"[INFO] No custom glossary - using general translation guidelines")
+    print()
+
     # Chunk
-    print("[STEP 2/4] Create chunks")
+    print("[STEP 3/5] Create chunks")
     print("-" * 70)
     chunks = chunk_text(text, chunk_size=5000)
     print(f"[OK] ✓ Total chunks to translate: {len(chunks)}")
     print()
 
     # Translate
-    print("[STEP 3/4] Translate with Claude API (병렬 처리)")
+    print("[STEP 4/5] Translate with Claude API (병렬 처리)")
     print("-" * 70)
-    translated_chunks = translate_chunks(chunks, "English", "Korean", api_key)
+    translated_chunks = translate_chunks(
+        chunks, "English", "Korean", api_key,
+        glossary=glossary
+    )
 
     if not translated_chunks:
         print("[ERROR] Translation failed")
@@ -645,7 +767,7 @@ def main():
     print()
     
     # Generate markdown
-    print("[STEP 4/4] Generate markdown")
+    print("[STEP 5/5] Generate markdown")
     print("-" * 70)
     markdown = generate_markdown(pdf_path.stem, translated_chunks, text, len(pages))
     print()
