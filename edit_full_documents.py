@@ -4,17 +4,15 @@
 Complete Document Editing Pipeline
 완전한 문서 편집 파이프라인 (교정 + 교열 + 윤문)
 
-심플하게 파일 경로를 지정하면 됨:
+파일 경로를 지정하면 편집 수행:
   python edit_full_documents.py output/output_laf_translated.md
   python edit_full_documents.py output/output_saf_full_translated.md
-  python edit_full_documents.py output/output_soshr_full_translated.md
-  python edit_full_documents.py output/output_cs_full_translated.md
 """
 
 import sys
 import os
 from pathlib import Path
-from typing import Optional, Tuple, Dict
+from typing import Optional, Dict
 import json
 import time
 
@@ -34,47 +32,10 @@ except ImportError:
 from src.editing.edit_orchestrator import EditOrchestrator
 
 
-# 파일명 패턴 → 도메인 매핑 (자동 감지용)
-DOMAIN_DETECTION = {
-    'laf': 'legal',
-    'saf': 'finance',
-    'soshr': 'general',
-    'cs': 'technology'
-}
-
-DOCUMENT_TITLES = {
-    'laf': 'LAF (Law and Frameworks)',
-    'saf': 'SAF (Standards and Frameworks)',
-    'soshr': 'SOSHR (Social and Human Resources)',
-    'cs': 'CS (Computer Science)'
-}
-
-
-def detect_domain_from_filename(file_path: str) -> Tuple[str, str]:
-    """
-    파일명에서 도메인 자동 감지
-
-    Args:
-        file_path: 파일 경로
-
-    Returns:
-        (doc_key, domain) 튜플
-        예: ('laf', 'legal')
-    """
-    filename = Path(file_path).stem.lower()
-
-    for doc_key, domain in DOMAIN_DETECTION.items():
-        if doc_key in filename:
-            return doc_key, domain
-
-    # 감지 실패시 기본값
-    return 'general', 'general'
-
-
 def print_header():
     """헤더 출력"""
     print("\n" + "=" * 80)
-    print("📝 포괄적 문서 편집 파이프라인 (Document Editing Pipeline)")
+    print("📝 문서 편집 파이프라인 (Document Editing Pipeline)")
     print("=" * 80)
     print("2025년 11월 기준 한국어 맞춤법, 팩트 검증, 문장 개선")
     print("=" * 80 + "\n")
@@ -86,9 +47,7 @@ def print_usage():
     print("  python edit_full_documents.py <파일경로>")
     print("\n예시:")
     print("  python edit_full_documents.py output/output_laf_translated.md")
-    print("  python edit_full_documents.py output/output_saf_full_translated.md")
-    print("  python edit_full_documents.py output/output_soshr_full_translated.md")
-    print("  python edit_full_documents.py output/output_cs_full_translated.md")
+    print("  python edit_full_documents.py output/translated_file.md")
 
 
 def check_file_exists(file_path: str) -> bool:
@@ -117,17 +76,16 @@ def edit_document(file_path: str) -> Optional[Dict]:
     if not check_file_exists(file_path):
         return None
 
-    # 도메인 자동 감지
-    doc_key, domain = detect_domain_from_filename(file_path)
-    title = DOCUMENT_TITLES.get(doc_key, Path(file_path).stem)
+    # 파일명 추출
+    file_name = Path(file_path).name
+    file_stem = Path(file_path).stem
 
     # 출력 파일 경로 자동 생성
     output_file = file_path.replace('.md', '_edited.md')
     report_file = file_path.replace('.md', '_editing_report.json')
 
     print(f"{'=' * 80}")
-    print(f"📄 {title}")
-    print(f"   도메인: {domain}")
+    print(f"📄 {file_name}")
     print(f"{'=' * 80}")
 
     # 오케스트레이터 초기화
@@ -139,7 +97,7 @@ def edit_document(file_path: str) -> Optional[Dict]:
     try:
         doc = orchestrator.load_document(
             file_path=file_path,
-            domain=domain,
+            domain='general',
             target_audience='general'
         )
         word_count = len(doc.content.split())
@@ -252,7 +210,6 @@ def edit_document(file_path: str) -> Optional[Dict]:
             'file': {
                 'input': file_path,
                 'output': output_file,
-                'domain': domain,
                 'word_count': word_count,
                 'chapter_count': chapter_count
             },
