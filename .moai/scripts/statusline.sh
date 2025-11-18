@@ -1,4 +1,4 @@
-    
+
  #!/usr/bin/env bash
 # MoAI-ADK Statusline for Claude Code
 #

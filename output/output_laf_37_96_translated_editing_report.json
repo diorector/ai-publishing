@@ -1,0 +1,18 @@
+{
+  "file": {
+    "input": "C:\\Users\\dio9\\Desktop\\moaicamp\\ai-publishing_v1\\output\\output_laf_37_96_translated.md",
+    "output": "C:\\Users\\dio9\\Desktop\\moaicamp\\ai-publishing_v1\\output\\output_laf_37_96_translated_edited.md",
+    "word_count": 11081,
+    "chapter_count": 18
+  },
+  "results": {
+    "quality_score": 81.66666666666667,
+    "quality_breakdown": {
+      "proofreading": 85,
+      "fact_checking": 80,
+      "copywriting": 80
+    },
+    "processing_time": 1902.451542377472,
+    "total_changes": 113
+  }
+}

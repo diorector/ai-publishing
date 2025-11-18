@@ -11,6 +11,7 @@ from typing import List, Optional
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
 
 # Set encoding for Windows
 if sys.platform == 'win32':
@@ -29,6 +30,27 @@ except ImportError:
 def get_api_key() -> Optional[str]:
     """Get Claude API key"""
     return os.getenv('ANTHROPIC_API_KEY')
+
+
+# 모델별 가격(USD per 1M tokens). 필요 시 환경변수로 덮어쓰기 지원.
+# - 공식 가격: https://www.anthropic.com/pricing
+# - Claude Haiku 4.5: $1.00/M input, $5.00/M output (2025-01-01 기준)
+# - 환경변수로 덮어쓰기: CLAUDE_HAIKU_45_INPUT_MTOK, CLAUDE_HAIKU_45_OUTPUT_MTOK
+PRICING_USD_PER_MTOK = {
+    "claude-haiku-4-5-20251001": {
+        "input": float(os.getenv("CLAUDE_HAIKU_45_INPUT_MTOK", "1.00")),
+        "output": float(os.getenv("CLAUDE_HAIKU_45_OUTPUT_MTOK", "5.00")),
+    },
+    # 다른 모델 추가 가능
+    "claude-3-5-sonnet-20241022": {
+        "input": float(os.getenv("CLAUDE_SONNET_35_INPUT_MTOK", "3.00")),
+        "output": float(os.getenv("CLAUDE_SONNET_35_OUTPUT_MTOK", "15.00")),
+    },
+}
+
+def _get_model_pricing(model_name: str) -> dict:
+    """모델별 가격 정보를 반환. 미등록 모델은 0으로 채워 반환."""
+    return PRICING_USD_PER_MTOK.get(model_name, {"input": 0.0, "output": 0.0})
 
 
 def extract_glossary(text: str, api_key: str, sample_size: int = 30000) -> dict:
@@ -268,7 +290,7 @@ def translate_with_claude(
     total_chunks: int = 0,
     context: Optional[str] = None,
     glossary: Optional[dict] = None
-) -> Optional[str]:
+) -> Optional[dict]:
     """
     전문 번역가 수준의 프롬프트를 사용한 Claude API 기반 번역
 
@@ -337,7 +359,11 @@ def translate_with_claude(
         context (Optional[str]): 이전 청크의 오버랩 텍스트 (컨텍스트 인식용)
 
     Returns:
-        Optional[str]: 번역된 텍스트, 또는 실패 시 None
+        Optional[dict]: {
+            'text': 번역문,
+            'usage': {'input_tokens': int, 'output_tokens': int, 'total_tokens': int},
+            'model': str
+        } 또는 실패 시 None
     """
     if not api_key:
         return None
@@ -346,6 +372,7 @@ def translate_with_claude(
         from anthropic import Anthropic
 
         client = Anthropic(api_key=api_key)
+        model_name = "claude-haiku-4-5-20251001"
 
         # 용어집 섹션 생성
         glossary_section = ""
@@ -475,12 +502,41 @@ def translate_with_claude(
 번역문만 출력하세요. 설명이나 주석은 불필요합니다."""
 
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model_name,
             max_tokens=64000,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        return message.content[0].text
+        result_text = message.content[0].text
+        # usage 안전 추출 (SDK 버전별 속성/딕트 차이 대응)
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            usage_obj = getattr(message, "usage", None)
+            if usage_obj is not None:
+                # 객체 속성 스타일
+                if hasattr(usage_obj, "input_tokens"):
+                    input_tokens = int(getattr(usage_obj, "input_tokens") or 0)
+                if hasattr(usage_obj, "output_tokens"):
+                    output_tokens = int(getattr(usage_obj, "output_tokens") or 0)
+                # 딕셔너리 스타일
+                if isinstance(usage_obj, dict):
+                    input_tokens = int(usage_obj.get("input_tokens") or input_tokens or 0)
+                    output_tokens = int(usage_obj.get("output_tokens") or output_tokens or 0)
+        except Exception:
+            # usage 파싱 실패 시 0으로 처리
+            input_tokens = input_tokens or 0
+            output_tokens = output_tokens or 0
+
+        return {
+            "text": result_text,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": (input_tokens or 0) + (output_tokens or 0),
+            },
+            "model": model_name,
+        }
 
     except ImportError:
         print("[ERROR] anthropic not installed: pip install anthropic")
@@ -495,7 +551,7 @@ def translate_chunks(
     source_lang: str = "English",
     target_lang: str = "Korean",
     api_key: Optional[str] = None,
-    max_workers: int = 5,
+    max_workers: int = 20,
     glossary: Optional[dict] = None
 ) -> List[str]:
     """
@@ -565,6 +621,8 @@ def translate_chunks(
     # 결과를 인덱스와 함께 저장하기 위한 딕셔너리
     results = {}
     completed_count = 0
+    # 토큰 사용량 집계: 모델별 input/output/requests
+    usage_by_model = defaultdict(lambda: {"input_tokens": 0, "output_tokens": 0, "requests": 0})
 
     def translate_chunk_wrapper(chunk_info):
         """각 스레드에서 실행될 번역 함수"""
@@ -602,9 +660,24 @@ def translate_chunks(
             completed_count += 1
             pending_count = len(futures) - completed_count
             
-            if translated:
-                results[i] = translated
-                print(f"✓ [{completed_count:2d}/{len(chunks)}] Chunk {i:2d} 완료 ({len(translated):5d} chars, {elapsed:5.1f}s) | 남은작업: {pending_count:2d}", flush=True)
+            # translated: None | str | dict
+            text_out = None
+            model_name = None
+            if isinstance(translated, dict):
+                text_out = translated.get("text")
+                usage = translated.get("usage") or {}
+                model_name = translated.get("model")
+                # 집계
+                if model_name:
+                    usage_by_model[model_name]["input_tokens"] += int(usage.get("input_tokens") or 0)
+                    usage_by_model[model_name]["output_tokens"] += int(usage.get("output_tokens") or 0)
+                    usage_by_model[model_name]["requests"] += 1
+            else:
+                text_out = translated
+
+            if text_out:
+                results[i] = text_out
+                print(f"✓ [{completed_count:2d}/{len(chunks)}] Chunk {i:2d} 완료 ({len(text_out):5d} chars, {elapsed:5.1f}s) | 남은작업: {pending_count:2d}", flush=True)
             else:
                 # 원본 텍스트 사용
                 original_text = chunks[i-1]['text'] if isinstance(chunks[i-1], dict) else chunks[i-1]
@@ -622,6 +695,32 @@ def translate_chunks(
     print(f"  • 평균시간: {elapsed/len(chunks):.1f}초/청크")
     print(f"  • 병렬도: {max_workers}개 워커")
     print(f"  • 적용규칙: TRANSLATION_GUIDELINE.md")
+    # 토큰/비용 요약 (공식 가격 기준)
+    if usage_by_model:
+        print(f"  • 토큰 사용량 및 예상 비용 (Anthropic 공식 가격 기준):")
+        grand_input = 0
+        grand_output = 0
+        grand_cost = 0.0
+        for model, agg in usage_by_model.items():
+            inp = agg["input_tokens"]
+            outp = agg["output_tokens"]
+            reqs = agg["requests"]
+            grand_input += inp
+            grand_output += outp
+            price = _get_model_pricing(model)
+            cost = (inp / 1_000_000.0) * float(price.get("input", 0) or 0) + (outp / 1_000_000.0) * float(price.get("output", 0) or 0)
+            grand_cost += cost
+            if (price.get("input", 0) or 0) == 0 and (price.get("output", 0) or 0) == 0:
+                print(f"    - {model}: input={inp:,} tok, output={outp:,} tok, requests={reqs}")
+                print(f"      ⚠️ 가격표 미등록 (환경변수로 설정하세요)")
+            else:
+                print(f"    - {model} ({reqs}회 호출)")
+                print(f"      Input:  {inp:>10,} tokens × ${price['input']:.2f}/M = ${(inp/1_000_000)*price['input']:.4f}")
+                print(f"      Output: {outp:>10,} tokens × ${price['output']:.2f}/M = ${(outp/1_000_000)*price['output']:.4f}")
+                print(f"      소계: ${cost:.4f}")
+        print()
+        print(f"    💰 총 예상 비용: ${grand_cost:.4f} USD")
+        print(f"       (Input: {grand_input:,} tok | Output: {grand_output:,} tok)")
     print(f"{'='*70}")
     print()
 

@@ -146,14 +146,12 @@ def edit_document(file_path: str) -> Optional[Dict]:
     print(f"\n📈 편집 결과")
     print("-" * 80)
 
-    statistics = result['statistics']
-    quality_metrics = result['quality_metrics']
+    quality_breakdown = result.get('quality_breakdown', {})
+    changes_summary = result.get('changes_summary', {})
+    all_changes = changes_summary.get('changes', [])
 
     print(f"\n📊 변경사항:")
-    print(f"   교정: {statistics.get('proofreading_changes', 0):,}개")
-    print(f"   교열: {statistics.get('fact_checks', 0):,}개")
-    print(f"   윤문: {statistics.get('copywriting_changes', 0):,}개")
-    print(f"   총합: {len(result['changes']):,}개")
+    print(f"   총합: {len(all_changes):,}개")
 
     print(f"\n🎯 품질 점수:")
     quality_score = result['quality_score']
@@ -167,20 +165,24 @@ def edit_document(file_path: str) -> Optional[Dict]:
     else:
         print(" ⭐⭐")
 
-    print(f"   교정: {quality_metrics.get('proofreading_quality', 0):.1f}/100")
-    print(f"   교열: {quality_metrics.get('fact_checking_quality', 0):.1f}/100")
-    print(f"   윤문: {quality_metrics.get('copywriting_quality', 0):.1f}/100")
+    if quality_breakdown:
+        print(f"   교정: {quality_breakdown.get('proofreading', 0):.1f}/100")
+        print(f"   교열: {quality_breakdown.get('fact_checking', 0):.1f}/100")
+        print(f"   윤문: {quality_breakdown.get('copywriting', 0):.1f}/100")
 
     print(f"\n⏱️  처리 시간: {elapsed_time:.2f}초")
 
     # 4. 변경사항 샘플
-    if result['changes']:
+    if all_changes:
         print(f"\n📝 변경사항 샘플 (처음 3개):")
         print("-" * 80)
-        for i, change in enumerate(result['changes'][:3], 1):
-            print(f"\n{i}. [{change['type'].upper()}]")
-            original_preview = change['original'][:50].replace('\n', ' ')
-            fixed_preview = change['fixed'][:50].replace('\n', ' ')
+        for i, change in enumerate(all_changes[:3], 1):
+            change_type = change.get('type', 'unknown')
+            original = change.get('original', '')
+            fixed = change.get('fixed', '')
+            print(f"\n{i}. [{change_type.upper()}]")
+            original_preview = original[:50].replace('\n', ' ')
+            fixed_preview = fixed[:50].replace('\n', ' ')
             print(f"   원: {original_preview}...")
             print(f"   수: {fixed_preview}...")
 
@@ -190,7 +192,11 @@ def edit_document(file_path: str) -> Optional[Dict]:
     print(f"{'=' * 80}")
 
     try:
-        edited_content = result['edited_document'].content
+        # 최종 텍스트 가져오기
+        edited_content = result.get('final_text', '')
+        if not edited_content and 'document' in result:
+            edited_content = result['document'].content
+        
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(edited_content)
@@ -215,10 +221,9 @@ def edit_document(file_path: str) -> Optional[Dict]:
             },
             'results': {
                 'quality_score': quality_score,
-                'quality_metrics': quality_metrics,
-                'statistics': statistics,
+                'quality_breakdown': quality_breakdown,
                 'processing_time': elapsed_time,
-                'total_changes': len(result['changes'])
+                'total_changes': len(all_changes)
             }
         }
 
@@ -233,7 +238,7 @@ def edit_document(file_path: str) -> Optional[Dict]:
         'input_file': file_path,
         'output_file': output_file,
         'quality_score': quality_score,
-        'changes_count': len(result['changes']),
+        'changes_count': len(all_changes),
         'processing_time': elapsed_time
     }
 

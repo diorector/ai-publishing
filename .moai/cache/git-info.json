@@ -1,7 +1,7 @@
 {
   "branch": "master",
-  "last_commit": "870c0bd refactor: Flexible PDF translation with input/output folder structure",
-  "commit_time": "76 minutes ago",
-  "changes": 14,
-  "last_check": "2025-11-17T01:38:03.482873"
+  "last_commit": "e5cc519 feat: Add glossary extraction and integration for enhanced translation consistency",
+  "commit_time": "2 days ago",
+  "changes": 15,
+  "last_check": "2025-11-18T22:03:29.874074"
 }

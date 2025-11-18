@@ -2,17 +2,35 @@
 # 작성일: 2025-11-18
 # 목적: 교정, 교열, 윤문 3단계를 조율하는 전체 파이프라인 오케스트레이션
 
+import os
 import time
 import json
 from typing import Dict, List, Any, Optional, Callable
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
 
 from .edit_proofreading import ProofreadingModule
 from .edit_fact_checking import FactCheckingModule
 from .edit_copywriting import CopywritingModule
 from .models.document import Document, DocumentStructure
+
+# 모델별 가격(USD per 1M tokens)
+PRICING_USD_PER_MTOK = {
+    "claude-haiku-4-5-20251001": {
+        "input": float(os.getenv("CLAUDE_HAIKU_45_INPUT_MTOK", "1.00")),
+        "output": float(os.getenv("CLAUDE_HAIKU_45_OUTPUT_MTOK", "5.00")),
+    },
+    "claude-3-5-sonnet-20240620": {
+        "input": float(os.getenv("CLAUDE_SONNET_35_INPUT_MTOK", "3.00")),
+        "output": float(os.getenv("CLAUDE_SONNET_35_OUTPUT_MTOK", "15.00")),
+    },
+}
+
+def _get_model_pricing(model_name: str) -> dict:
+    """모델별 가격 정보를 반환"""
+    return PRICING_USD_PER_MTOK.get(model_name, {"input": 0.0, "output": 0.0})
 
 
 class EditOrchestrator:
@@ -185,6 +203,9 @@ class EditOrchestrator:
         current_doc = doc
         all_changes = []
         quality_scores = {}
+        
+        # 토큰 사용량 집계
+        usage_by_model = defaultdict(lambda: {"input_tokens": 0, "output_tokens": 0, "requests": 0})
 
         # 각 단계별 처리
         for stage in stages:
@@ -193,23 +214,85 @@ class EditOrchestrator:
                 current_doc.update_content(result['corrected_text'])
                 all_changes.extend(result.get('changes', []))
                 quality_scores['proofreading'] = result.get('quality_score', 0)
+                
+                # 토큰 집계
+                usage = result.get('usage', {})
+                if usage:
+                    model = usage.get('model', 'unknown')
+                    usage_by_model[model]["input_tokens"] += usage.get('input_tokens', 0)
+                    usage_by_model[model]["output_tokens"] += usage.get('output_tokens', 0)
+                    usage_by_model[model]["requests"] += 1
 
             elif stage == 'fact_checking':
                 result = self.fact_check_document(current_doc)
                 current_doc.update_content(result['verified_text'])
                 all_changes.extend(result.get('outdated_items', []))
                 quality_scores['fact_checking'] = result.get('quality_score', 0)
+                
+                # 토큰 집계
+                usage = result.get('usage', {})
+                if usage:
+                    model = usage.get('model', 'unknown')
+                    usage_by_model[model]["input_tokens"] += usage.get('input_tokens', 0)
+                    usage_by_model[model]["output_tokens"] += usage.get('output_tokens', 0)
+                    usage_by_model[model]["requests"] += 1
 
             elif stage == 'copywriting':
                 result = self.copywrite_document(current_doc)
                 current_doc.update_content(result['improved_text'])
                 all_changes.extend(result.get('changes', []))
                 quality_scores['copywriting'] = result.get('quality_score', 0)
+                
+                # 토큰 집계
+                usage = result.get('usage', {})
+                if usage:
+                    model = usage.get('model', 'unknown')
+                    usage_by_model[model]["input_tokens"] += usage.get('input_tokens', 0)
+                    usage_by_model[model]["output_tokens"] += usage.get('output_tokens', 0)
+                    usage_by_model[model]["requests"] += 1
 
         processing_time = time.time() - start_time
 
         # 최종 품질 점수
         final_quality = sum(quality_scores.values()) / len(quality_scores) if quality_scores else 0
+        
+        # 토큰/비용 계산
+        print("\n" + "=" * 70)
+        print("[완료] 편집 완료!")
+        print(f"  • 소요시간: {processing_time:.1f}초")
+        print(f"  • 총 변경사항: {len(all_changes)}개")
+        
+        if usage_by_model:
+            print(f"  • 토큰 사용량 및 예상 비용 (Anthropic 공식 가격 기준):")
+            grand_input = 0
+            grand_output = 0
+            grand_cost = 0.0
+            
+            for model, agg in usage_by_model.items():
+                inp = agg["input_tokens"]
+                outp = agg["output_tokens"]
+                reqs = agg["requests"]
+                grand_input += inp
+                grand_output += outp
+                
+                price = _get_model_pricing(model)
+                cost = (inp / 1_000_000.0) * price.get("input", 0) + (outp / 1_000_000.0) * price.get("output", 0)
+                grand_cost += cost
+                
+                if price.get("input", 0) == 0 and price.get("output", 0) == 0:
+                    print(f"    - {model}: input={inp:,} tok, output={outp:,} tok")
+                    print(f"      ⚠️  가격표 미등록")
+                else:
+                    print(f"    - {model} ({reqs}회 호출)")
+                    print(f"      Input:  {inp:>10,} tokens × ${price['input']:.2f}/M = ${(inp/1_000_000)*price['input']:.4f}")
+                    print(f"      Output: {outp:>10,} tokens × ${price['output']:.2f}/M = ${(outp/1_000_000)*price['output']:.4f}")
+                    print(f"      소계: ${cost:.4f}")
+            
+            print()
+            print(f"    💰 총 예상 비용: ${grand_cost:.4f} USD")
+            print(f"       (Input: {grand_input:,} tok | Output: {grand_output:,} tok)")
+        print("=" * 70)
+        print()
 
         return {
             'final_text': current_doc.content,
@@ -221,6 +304,7 @@ class EditOrchestrator:
             },
             'processing_time': processing_time,
             'document': current_doc,
+            'usage_summary': dict(usage_by_model)
         }
 
     def edit_custom_stages(
