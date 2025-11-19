@@ -127,6 +127,9 @@ python translate_pdf.py input/book.pdf
 
 # 2. 문서 편집
 python edit_document.py output/output_book_translated.md
+
+# 3. 품질 검증 (출판 전 필수!)
+python quality_check.py output_edited/output_book_translated/output_book_translated_edited.md
 ```
 
 **자세한 가이드**: [QUICKSTART.md](QUICKSTART.md) | [README_USAGE.md](README_USAGE.md)
@@ -183,9 +186,9 @@ python translate_pdf.py /abs/path/file.pdf  # 절대 경로 지정
 
 ---
 
-## ✏️ 문서 편집 시스템
+## ✏️ 문서 편집 & 품질 검증 시스템
 
-출판 편집자 수준의 2-Pass 편집 시스템:
+출판 편집자 수준의 완전한 편집 파이프라인:
 
 ### 1️⃣ Pass 1: 기계적 교정
 - 맞춤법, 띄어쓰기, 문장부호 수정
@@ -198,13 +201,33 @@ python translate_pdf.py /abs/path/file.pdf  # 절대 경로 지정
 - 가독성 향상
 - 리듬감 추가
 
+### 3️⃣ 자동 수정
+- 포맷팅 이슈 자동 교정
+- 번역체 표현 제거
+- 공백 정리
+- 백업 생성
+
+### 4️⃣ 출판 품질 검증
+- **구조 무결성**: 제목 계층, 빈 섹션, 중복 체크
+- **문장 품질**: 길이, 번역체, 반복 단어
+- **포맷팅**: 마크다운 문법, 공백, 레이아웃
+- **일관성**: 존댓말/반말, 숫자 표기
+- **가독성**: 평균 문장 길이, 단락 길이
+- **최종 판정**: 출판 가능 여부 자동 판단
+
 ### 사용법
 ```bash
-# 전체 2-Pass 편집
-python edit_document.py output/output_laf_translated.md
+# 1. DOCX 파일을 마크다운으로 변환
+python convert_docx_to_md.py input/document.docx
 
-# Pass 1만 (교정만)
-python edit_document.py output/output_laf_translated.md --pass1-only
+# 2. 전체 2-Pass 편집
+python edit_document.py output/document.md
+
+# 3. 자동 수정 (포맷팅, 번역체 등)
+python auto_fix.py output_edited/document/document_edited.md --backup
+
+# 4. 출판 품질 검증
+python quality_check.py output_edited/document/document_edited.md
 
 # 출력: output_edited/파일명/파일명_edited.md
 ```
