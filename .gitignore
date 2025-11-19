@@ -52,6 +52,15 @@ logs/
 .coverage
 coverage.json
 
+# Output files
+output/
+output_edited/
+
+# Test files
+test_*.md
+test_*.py
+sample_*.md
+
 # Next.js build output
 docs/.next/
 docs/out/

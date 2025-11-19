@@ -1,157 +1,244 @@
-# Diff 생성 유틸리티
-# 작성일: 2025-11-18
-# 목적: 원문과 편집본 비교 및 변경사항 시각화
+# 변경사항 비교 도구
+# 원문과 편집본의 차이를 명확하게 표시
 
-from typing import Dict, List, Any, Tuple
 import difflib
+from typing import List, Tuple
+import re
 
 
 class DiffGenerator:
-    """원문과 편집본 비교 및 Diff 생성"""
-
-    @staticmethod
-    def generate_diff(original: str, edited: str) -> List[Dict[str, Any]]:
-        """텍스트 Diff 생성"""
-        diffs = []
-
-        # 라인 단위 diff
-        original_lines = original.split('\n')
-        edited_lines = edited.split('\n')
-
-        diff_lines = list(difflib.unified_diff(
+    """편집 전후 비교 생성기"""
+    
+    def __init__(self):
+        self.changes = []
+    
+    def generate_side_by_side(self, original: str, edited: str, context_lines: int = 2) -> str:
+        """
+        좌우 비교 형식으로 변경사항 표시
+        
+        Args:
+            original: 원본 텍스트
+            edited: 편집된 텍스트
+            context_lines: 변경 전후 표시할 컨텍스트 라인 수
+        
+        Returns:
+            좌우 비교 텍스트
+        """
+        original_lines = original.splitlines()
+        edited_lines = edited.splitlines()
+        
+        diff = difflib.unified_diff(
             original_lines,
             edited_lines,
             lineterm='',
-            n=1
-        ))
-
-        # Diff 파싱
-        for line in diff_lines:
-            if line.startswith('@@'):
-                # 헤더 스킵
+            n=context_lines
+        )
+        
+        result = []
+        result.append("=" * 80)
+        result.append("편집 전후 비교")
+        result.append("=" * 80)
+        result.append("")
+        
+        for line in diff:
+            if line.startswith('---') or line.startswith('+++'):
+                continue
+            elif line.startswith('@@'):
+                result.append("")
+                result.append("-" * 80)
                 continue
             elif line.startswith('-'):
-                diffs.append({
-                    'type': 'deletion',
-                    'content': line[1:],
-                })
+                result.append(f"❌ 원문: {line[1:]}")
             elif line.startswith('+'):
-                diffs.append({
-                    'type': 'addition',
-                    'content': line[1:],
-                })
-            elif line.startswith(' '):
-                diffs.append({
-                    'type': 'context',
-                    'content': line[1:],
-                })
-
-        return diffs
-
-    @staticmethod
-    def generate_side_by_side(original: str, edited: str) -> Dict[str, List[str]]:
-        """좌우 비교 형식 생성"""
-        original_lines = original.split('\n')
-        edited_lines = edited.split('\n')
-
-        # 라인 수 맞추기
-        max_lines = max(len(original_lines), len(edited_lines))
-        original_lines.extend([''] * (max_lines - len(original_lines)))
-        edited_lines.extend([''] * (max_lines - len(edited_lines)))
-
-        return {
-            'original': original_lines,
-            'edited': edited_lines,
-        }
-
-    @staticmethod
-    def calculate_similarity(original: str, edited: str) -> float:
-        """편집 전후 유사도 계산"""
-        matcher = difflib.SequenceMatcher(None, original, edited)
-        ratio = matcher.ratio()
-        return ratio * 100
-
-    @staticmethod
-    def generate_html_diff(original: str, edited: str) -> str:
-        """HTML 형식 Diff 생성"""
-        from difflib import HtmlDiff
-
-        hdiff = HtmlDiff()
-        html = hdiff.make_file(
-            original.split('\n'),
-            edited.split('\n'),
-            context=True,
-            numlines=1
-        )
-        return html
-
-    @staticmethod
-    def highlight_changes(original: str, edited: str, context_size: int = 50) -> List[Dict[str, Any]]:
-        """변경 부분 강조"""
-        changes = []
-
-        # 단어 단위 비교
-        original_words = original.split()
-        edited_words = edited.split()
-
-        matcher = difflib.SequenceMatcher(None, original_words, edited_words)
-
+                result.append(f"✅ 편집: {line[1:]}")
+            else:
+                result.append(f"   {line}")
+        
+        return '\n'.join(result)
+    
+    def generate_inline_diff(self, original: str, edited: str) -> str:
+        """
+        인라인 형식으로 변경사항 표시
+        
+        Args:
+            original: 원본 텍스트
+            edited: 편집된 텍스트
+        
+        Returns:
+            인라인 비교 텍스트
+        """
+        original_lines = original.splitlines()
+        edited_lines = edited.splitlines()
+        
+        matcher = difflib.SequenceMatcher(None, original_lines, edited_lines)
+        
+        result = []
+        result.append("=" * 80)
+        result.append("편집 변경사항")
+        result.append("=" * 80)
+        result.append("")
+        
+        change_count = 0
+        
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == 'replace':
-                changes.append({
-                    'type': 'changed',
-                    'original': ' '.join(original_words[i1:i2]),
-                    'edited': ' '.join(edited_words[j1:j2]),
-                    'position': i1,
+                change_count += 1
+                result.append(f"\n[변경 {change_count}]")
+                result.append("-" * 40)
+                result.append("❌ 원문:")
+                for line in original_lines[i1:i2]:
+                    result.append(f"  {line}")
+                result.append("")
+                result.append("✅ 편집:")
+                for line in edited_lines[j1:j2]:
+                    result.append(f"  {line}")
+                result.append("-" * 40)
+            
+            elif tag == 'delete':
+                change_count += 1
+                result.append(f"\n[삭제 {change_count}]")
+                result.append("-" * 40)
+                for line in original_lines[i1:i2]:
+                    result.append(f"❌ {line}")
+                result.append("-" * 40)
+            
+            elif tag == 'insert':
+                change_count += 1
+                result.append(f"\n[추가 {change_count}]")
+                result.append("-" * 40)
+                for line in edited_lines[j1:j2]:
+                    result.append(f"✅ {line}")
+                result.append("-" * 40)
+        
+        result.append(f"\n총 {change_count}개 변경사항")
+        
+        return '\n'.join(result)
+    
+    def generate_summary(self, original: str, edited: str) -> dict:
+        """
+        변경사항 요약 통계
+        
+        Args:
+            original: 원본 텍스트
+            edited: 편집된 텍스트
+        
+        Returns:
+            통계 딕셔너리
+        """
+        original_lines = original.splitlines()
+        edited_lines = edited.splitlines()
+        
+        matcher = difflib.SequenceMatcher(None, original_lines, edited_lines)
+        
+        stats = {
+            'total_lines_original': len(original_lines),
+            'total_lines_edited': len(edited_lines),
+            'lines_changed': 0,
+            'lines_added': 0,
+            'lines_deleted': 0,
+            'similarity_ratio': matcher.ratio(),
+            'changes': []
+        }
+        
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'replace':
+                stats['lines_changed'] += max(i2 - i1, j2 - j1)
+                stats['changes'].append({
+                    'type': 'replace',
+                    'original': '\n'.join(original_lines[i1:i2]),
+                    'edited': '\n'.join(edited_lines[j1:j2])
                 })
             elif tag == 'delete':
-                changes.append({
-                    'type': 'deleted',
-                    'content': ' '.join(original_words[i1:i2]),
-                    'position': i1,
+                stats['lines_deleted'] += i2 - i1
+                stats['changes'].append({
+                    'type': 'delete',
+                    'original': '\n'.join(original_lines[i1:i2])
                 })
             elif tag == 'insert':
-                changes.append({
-                    'type': 'added',
-                    'content': ' '.join(edited_words[j1:j2]),
-                    'position': j1,
+                stats['lines_added'] += j2 - j1
+                stats['changes'].append({
+                    'type': 'insert',
+                    'edited': '\n'.join(edited_lines[j1:j2])
                 })
-
+        
+        return stats
+    
+    def highlight_word_changes(self, original: str, edited: str) -> List[Tuple[str, str]]:
+        """
+        단어 수준의 변경사항 하이라이트
+        
+        Args:
+            original: 원본 문장
+            edited: 편집된 문장
+        
+        Returns:
+            (원문, 편집본) 튜플 리스트
+        """
+        original_words = original.split()
+        edited_words = edited.split()
+        
+        matcher = difflib.SequenceMatcher(None, original_words, edited_words)
+        
+        changes = []
+        
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'replace':
+                orig = ' '.join(original_words[i1:i2])
+                edit = ' '.join(edited_words[j1:j2])
+                changes.append((f"[{orig}]", f"[{edit}]"))
+            elif tag == 'delete':
+                orig = ' '.join(original_words[i1:i2])
+                changes.append((f"[{orig}]", "[삭제]"))
+            elif tag == 'insert':
+                edit = ' '.join(edited_words[j1:j2])
+                changes.append(("[추가]", f"[{edit}]"))
+        
         return changes
 
-    @staticmethod
-    def generate_markdown_diff(original: str, edited: str) -> str:
-        """마크다운 형식 Diff 생성"""
-        markdown = "# 변경 사항\n\n"
 
-        diffs = DiffGenerator.generate_diff(original, edited)
-
-        for diff in diffs:
-            if diff['type'] == 'deletion':
-                markdown += f"~~{diff['content']}~~\n"
-            elif diff['type'] == 'addition':
-                markdown += f"**{diff['content']}**\n"
-            elif diff['type'] == 'context':
-                markdown += f"{diff['content']}\n"
-
-        return markdown
-
-    @staticmethod
-    def generate_change_summary(original: str, edited: str) -> Dict[str, Any]:
-        """변경 요약"""
-        changes = DiffGenerator.highlight_changes(original, edited)
-
-        summary = {
-            'total_changes': len(changes),
-            'changes_by_type': {
-                'changed': sum(1 for c in changes if c['type'] == 'changed'),
-                'deleted': sum(1 for c in changes if c['type'] == 'deleted'),
-                'added': sum(1 for c in changes if c['type'] == 'added'),
-            },
-            'similarity': DiffGenerator.calculate_similarity(original, edited),
-            'original_length': len(original),
-            'edited_length': len(edited),
-            'length_change': len(edited) - len(original),
-        }
-
-        return summary
+def generate_markdown_diff(original: str, edited: str, title: str = "편집 비교") -> str:
+    """
+    마크다운 형식의 비교 문서 생성
+    
+    Args:
+        original: 원본 텍스트
+        edited: 편집된 텍스트
+        title: 문서 제목
+    
+    Returns:
+        마크다운 형식의 비교 문서
+    """
+    generator = DiffGenerator()
+    stats = generator.generate_summary(original, edited)
+    
+    md = []
+    md.append(f"# {title}\n")
+    md.append("## 📊 변경 통계\n")
+    md.append(f"- 원본 라인 수: {stats['total_lines_original']}")
+    md.append(f"- 편집 라인 수: {stats['total_lines_edited']}")
+    md.append(f"- 변경된 라인: {stats['lines_changed']}")
+    md.append(f"- 추가된 라인: {stats['lines_added']}")
+    md.append(f"- 삭제된 라인: {stats['lines_deleted']}")
+    md.append(f"- 유사도: {stats['similarity_ratio']*100:.1f}%\n")
+    
+    md.append("## 📝 주요 변경사항\n")
+    
+    for i, change in enumerate(stats['changes'][:10], 1):  # 상위 10개만
+        md.append(f"### 변경 {i}\n")
+        
+        if change['type'] == 'replace':
+            md.append("**원문:**")
+            md.append(f"```\n{change['original']}\n```\n")
+            md.append("**편집:**")
+            md.append(f"```\n{change['edited']}\n```\n")
+        elif change['type'] == 'delete':
+            md.append("**삭제:**")
+            md.append(f"```\n{change['original']}\n```\n")
+        elif change['type'] == 'insert':
+            md.append("**추가:**")
+            md.append(f"```\n{change['edited']}\n```\n")
+    
+    if len(stats['changes']) > 10:
+        md.append(f"\n... 외 {len(stats['changes']) - 10}개 변경사항\n")
+    
+    return '\n'.join(md)

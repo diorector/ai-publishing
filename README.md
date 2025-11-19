@@ -115,9 +115,27 @@ cd src/backend && pytest --cov
 
 ---
 
-## ⚡ PDF 번역 파이프라인 기능
+---
 
-이 프로젝트는 고급 PDF 번역 기능을 포함하고 있습니다:
+## ⚡ 핵심 기능
+
+### 🚀 빠른 시작
+
+```bash
+# 1. PDF 번역
+python translate_pdf.py input/book.pdf
+
+# 2. 문서 편집
+python edit_document.py output/output_book_translated.md
+```
+
+**자세한 가이드**: [QUICKSTART.md](QUICKSTART.md) | [README_USAGE.md](README_USAGE.md)
+
+---
+
+## 📝 PDF 번역 파이프라인
+
+이 프로젝트는 출판 수준의 PDF 번역 기능을 제공합니다:
 
 ### 1️⃣ Professional Translator-level Prompts
 - **페르소나**: 20년 경력 출판 번역가 (비즈니스/스타트업 분야 베스트셀러 다수)
@@ -155,13 +173,43 @@ cd src/backend && pytest --cov
 ### 5️⃣ Flexible PDF File Handling
 ```bash
 # input/ 폴더 구조로 자동 관리
-python translate_full_pdf.py              # input/laf.pdf 번역 (기본값)
-python translate_full_pdf.py book1.pdf    # input/book1.pdf 번역
-python translate_full_pdf.py my_book.pdf  # input/my_book.pdf 번역
-python translate_full_pdf.py /abs/path/file.pdf  # 절대 경로 지정
+python translate_pdf.py              # input/laf.pdf 번역 (기본값)
+python translate_pdf.py book1.pdf    # input/book1.pdf 번역
+python translate_pdf.py my_book.pdf  # input/my_book.pdf 번역
+python translate_pdf.py /abs/path/file.pdf  # 절대 경로 지정
 
 # 출력: output/output_{파일명}_translated.md
 ```
+
+---
+
+## ✏️ 문서 편집 시스템
+
+출판 편집자 수준의 2-Pass 편집 시스템:
+
+### 1️⃣ Pass 1: 기계적 교정
+- 맞춤법, 띄어쓰기, 문장부호 수정
+- 번역체 표현 제거
+- 일관성 확보
+
+### 2️⃣ Pass 2: 창의적 윤문
+- 문장 구조 개선
+- 긴 문장 분리
+- 가독성 향상
+- 리듬감 추가
+
+### 사용법
+```bash
+# 전체 2-Pass 편집
+python edit_document.py output/output_laf_translated.md
+
+# Pass 1만 (교정만)
+python edit_document.py output/output_laf_translated.md --pass1-only
+
+# 출력: output_edited/파일명/파일명_edited.md
+```
+
+**자세한 가이드**: [EDITING_GUIDE.md](EDITING_GUIDE.md)
 
 ### 5가지 번역 철학
 | 철학 | 설명 | 예시 |
@@ -180,50 +228,29 @@ python translate_full_pdf.py /abs/path/file.pdf  # 절대 경로 지정
 
 ```
 ai-publishing/
-├── .moai/                          # MoAI-ADK configuration
-│   ├── config/config.json          # Project metadata
-│   ├── specs/                      # SPEC documents (EARS format)
-│   │   ├── SPEC-000-baseline.md
-│   │   ├── SPEC-001-initialization.md
-│   │   └── README.md
-│   └── learning/                   # Learning materials
+├── translate_pdf.py                # PDF 번역 스크립트
+├── edit_document.py                # 문서 편집 스크립트
 │
 ├── src/
-│   ├── frontend/                   # Next.js application
-│   │   ├── app/                    # App Router pages
-│   │   ├── components/             # React components
-│   │   ├── hooks/                  # Custom hooks
-│   │   ├── lib/                    # Utilities
-│   │   ├── __tests__/              # Jest tests
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   └── backend/                    # FastAPI application
-│       ├── app.py                  # Main app entry
-│       ├── routers/                # API routes
-│       ├── models.py               # Database models
-│       ├── schemas.py              # Pydantic schemas
-│       ├── services/               # Business logic
-│       ├── ml/                     # ML models & inference
-│       ├── tests/                  # pytest tests
-│       ├── pyproject.toml
-│       └── requirements.txt
+│   └── editing/                    # 편집 모듈
+│       ├── edit_orchestrator_v2.py
+│       ├── prompts/                # AI 프롬프트
+│       ├── utils/                  # 유틸리티
+│       └── models/                 # 데이터 모델
 │
-├── docs/                           # Project documentation
-│   ├── API.md                      # API reference
-│   ├── ARCHITECTURE.md             # Architecture guide
-│   ├── DEVELOPMENT.md              # Developer guide
-│   └── DEPLOYMENT.md               # Deployment guide
+├── input/                          # 입력 PDF
+├── output/                         # 번역 결과
+├── output_edited/                  # 편집 결과
+├── resources/                      # 리소스 파일
 │
-├── .github/workflows/              # CI/CD pipelines
-│   ├── test.yml
-│   ├── coverage.yml
-│   └── deploy.yml
-│
-├── CLAUDE.md                       # Development conventions
-├── .mcp.json                       # Model Context Protocol config
-└── README.md                       # This file
+├── QUICKSTART.md                   # 빠른 시작
+├── README_USAGE.md                 # 상세 가이드
+├── TRANSLATION_GUIDELINE.md        # 번역 가이드
+├── EDITING_GUIDE.md                # 편집 가이드
+└── PROJECT_STRUCTURE.md            # 프로젝트 구조
 ```
+
+**자세한 구조**: [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
 
 ---
 
